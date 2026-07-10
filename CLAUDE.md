@@ -215,6 +215,32 @@ cargo tauri dev
 cargo tauri build
 ```
 
+## Privacy Rule (MIT open-source repo — HARD RULE)
+
+**Never commit personal, family, sensitive, or identifying information to this repository. Ever.**
+
+This includes but is not limited to:
+- Real names of the developer, family members, friends, colleagues (Gourav, Khushboo, Abeer, Kiaan, Rajul, Jawahar, Rakesh, or ANY real person)
+- Real addresses, apartment names, building names, city+neighborhood combos that identify a residence (Cadenza, Salarpuria, Sattva, Sarovar, Tirumala, Raga 2004, etc.)
+- Real personal document identifiers (Aadhaar, PAN, SSN, passport, VIN, IBAN, credit card, phone, DOB) — even in tests, even in comments, even in prompt examples
+- Real filesystem paths that reveal identity (`~/Dropbox/prop`, `~/Dropbox/scanned docs/Gourav`, real user home dirs)
+- Real corpus data from the developer's actual documents (property deeds, tax receipts, family passports)
+- Any string that could be searched to identify the developer or their family
+
+**Use only fictional placeholders in ALL:** source code, test fixtures, LLM few-shot prompt examples, unit tests, planning docs (`.planning/`), architecture notes, commit messages, PR descriptions, code comments, README examples.
+
+**Canonical placeholders for this repo:**
+- Persons: `Alex Doe`, `Jane Doe`, `John Roe`, `Sam Doe`, `Riley Doe`, `Kim R Doe`, `Pat R Doe`
+- Organizations: `Alpha Beta Corp`, `AlphaCorp`, `Acme Corp`
+- Locations/buildings: `AlphaComplex`, `Riverside Complex`, `Sunset Towers`, `Downtown Riverside`, `Unit 204`, `Building 42`, `Plot 42`
+- Cities: `Metroville`, `Bengaluru` (only if generic — never as `Rakesh Kumar of Bengaluru`)
+- Paths: `/private/docs`, `/private/scanned`, `~/Documents/samples`
+- IDs: `1234 5678 9012`, `XX12AB1234`, `ABCDE1234F` (never real ones)
+
+**Before every commit:** if the diff includes any string that could identify a real person or place, replace it with a placeholder before staging. If unsure, ask.
+
+**If PII has already been committed:** stop, do not push, notify the developer. Real path forward is a filter-repo rewrite + squash.
+
 ## Conventions
 
 - Use **named exports** for components, **default exports** for route pages
