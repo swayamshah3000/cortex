@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema/acl/schemas/capability.json",
+  "identifier": "default",
+  "description": "Default capability for Cortex",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "fs:allow-exists",
+    "fs:allow-stat"
+  ]
+}

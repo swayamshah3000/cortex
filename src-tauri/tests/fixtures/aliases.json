@@ -1,0 +1,8 @@
+[
+  {"type": "person", "pair": ["John Smith", "J. Smith"], "should_merge": true},
+  {"type": "person", "pair": ["John Smith", "Smith, John"], "should_merge": true},
+  {"type": "person", "pair": ["John Smith", "Jane Doe"], "should_merge": false},
+  {"type": "location", "pair": ["123 Main St", "Main Street property"], "should_merge": true},
+  {"type": "organization", "pair": ["Acme Corp", "Acme Corporation"], "should_merge": true},
+  {"type": "organization", "pair": ["Acme Corp", "Globex"], "should_merge": false}
+]

@@ -1,0 +1,268 @@
+/** @import must precede all other statements */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  /* Font families */
+  --font-family-plus-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-family-inter: "Inter", sans-serif;
+  --font-family-jetbrains-mono: "JetBrains Mono", monospace;
+
+  /* Border radius tokens */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  /* Accordion keyframes */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+
+  /* Citation highlight pulse — Phase 11.7 Plan 03 (RAGCH-07).
+     Applied to the chat-citation-highlight span/wrapper for 2s on mount. */
+  --animate-citation-pulse: citation-pulse 2s ease-out;
+
+  @keyframes citation-pulse {
+    0% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.5); }
+    100% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0); }
+  }
+
+  /* Color tokens — mapped from CSS variables (light mode defaults) */
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  /* Cortex-specific color tokens */
+  --color-bg-primary: hsl(var(--bg-primary));
+  --color-bg-secondary: hsl(var(--bg-secondary));
+  --color-bg-tertiary: hsl(var(--bg-tertiary));
+  --color-text-primary: hsl(var(--text-primary));
+  --color-text-secondary: hsl(var(--text-secondary));
+  --color-text-tertiary: hsl(var(--text-tertiary));
+  --color-accent-primary: hsl(var(--accent-primary));
+  --color-accent-hover: hsl(var(--accent-hover));
+  --color-accent-subtle: hsl(var(--accent-subtle));
+  --color-accent-warm: hsl(var(--accent-warm));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-error: hsl(var(--error));
+  --color-info: hsl(var(--info));
+  --color-border-primary: hsl(var(--border-primary));
+  --color-border-secondary: hsl(var(--border-secondary));
+}
+
+@layer base {
+  /**
+   * Cortex Design System - Color Tokens
+   * Tailwind CSS theme expects HSL values formatted as: "hue saturation lightness"
+   */
+
+  :root {
+    /* Light Mode - Backgrounds */
+    --bg-primary: 0 0% 98%;
+    --bg-secondary: 0 0% 100%;
+    --bg-tertiary: 270 100% 97%;
+    --border-primary: 210 14% 91%;
+    --border-secondary: 210 14% 96%;
+
+    /* Light Mode - Text */
+    --text-primary: 210 13% 10%;
+    --text-secondary: 210 8% 42%;
+    --text-tertiary: 210 7% 60%;
+
+    /* Accent Colors */
+    --accent-primary: 270 91% 42%;
+    --accent-hover: 270 91% 35%;
+    --accent-subtle: 270 100% 96%;
+    --accent-warm: 40 96% 56%;
+
+    /* Status Colors */
+    --success: 160 84% 34%;
+    --warning: 40 96% 56%;
+    --error: 0 84% 60%;
+    --info: 217 91% 60%;
+
+    /* Defaults for other tokens (light mode uses same as original) */
+    --background: 0 0% 100%;
+    --foreground: 210 13% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 13% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 13% 10%;
+    --primary: 270 91% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 14% 96%;
+    --secondary-foreground: 210 13% 10%;
+    --muted: 210 14% 96%;
+    --muted-foreground: 210 8% 42%;
+    --accent: 270 91% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 14% 91%;
+    --input: 210 14% 91%;
+    --ring: 270 91% 42%;
+  }
+
+  .dark {
+    /* Dark Mode - Backgrounds */
+    --bg-primary: 240 9% 8%;
+    --bg-secondary: 240 9% 14%;
+    --bg-tertiary: 270 24% 12%;
+    --border-primary: 240 7% 17%;
+    --border-secondary: 240 5% 13%;
+
+    /* Dark Mode - Text */
+    --text-primary: 210 14% 96%;
+    --text-secondary: 210 6% 60%;
+    --text-tertiary: 210 7% 42%;
+
+    /* Accent Colors - adjusted for dark mode */
+    --accent-primary: 270 72% 60%;
+    --accent-hover: 270 72% 50%;
+    --accent-subtle: 270 24% 12%;
+    --accent-warm: 40 96% 56%;
+
+    /* Status Colors */
+    --success: 160 84% 54%;
+    --warning: 40 96% 56%;
+    --error: 0 72% 51%;
+    --info: 217 91% 60%;
+
+    /* Defaults for other tokens (dark mode) */
+    --background: 240 9% 8%;
+    --foreground: 210 14% 96%;
+    --card: 240 9% 14%;
+    --card-foreground: 210 14% 96%;
+    --popover: 240 9% 14%;
+    --popover-foreground: 210 14% 96%;
+    --primary: 270 72% 60%;
+    --primary-foreground: 240 9% 8%;
+    --secondary: 240 7% 17%;
+    --secondary-foreground: 210 14% 96%;
+    --muted: 240 7% 17%;
+    --muted-foreground: 210 6% 60%;
+    --accent: 270 72% 60%;
+    --accent-foreground: 240 9% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 14% 96%;
+    --border: 240 7% 17%;
+    --input: 240 7% 17%;
+    --ring: 270 72% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Inter", sans-serif;
+  }
+
+  .app-title {
+    font-family: "Plus Jakarta Sans", sans-serif;
+    @apply text-xl font-bold;
+  }
+
+  .page-title {
+    font-family: "Inter", sans-serif;
+    @apply text-2xl font-semibold;
+  }
+
+  .section-header {
+    font-family: "Inter", sans-serif;
+    @apply text-lg font-semibold;
+  }
+
+  .card-title {
+    font-family: "Inter", sans-serif;
+    @apply text-base font-medium;
+  }
+
+  .caption {
+    font-family: "Inter", sans-serif;
+    @apply text-xs font-normal;
+  }
+
+  .badge-text {
+    font-family: "Inter", sans-serif;
+    @apply text-xs font-medium;
+  }
+
+  code {
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  :where(p, span, li, h1, h2, h3, h4, h5, h6, a, button, label, td, th) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre,
+  code {
+    overflow-x: auto;
+    white-space: pre;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-accent-primary text-white font-medium px-4 py-2 transition-colors duration-150 hover:bg-accent-hover active:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-border-primary bg-bg-secondary text-text-primary font-medium px-4 py-2 transition-colors duration-150 hover:bg-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-md text-text-primary font-medium px-4 py-2 transition-colors duration-150 hover:bg-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply rounded-lg border border-border-primary bg-bg-secondary shadow-sm;
+  }
+
+  .input-base {
+    @apply rounded-md border border-border-primary bg-bg-secondary text-text-primary px-3 py-2 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent;
+  }
+}

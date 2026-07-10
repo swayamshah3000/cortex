@@ -1,0 +1,7 @@
+# Generated Tauri/Rust build artifacts
+target/
+gen/
+
+# Bundled ML models (large binary; downloaded via scripts/download-ner-model.sh)
+src-tauri/models/*.onnx
+models/*.onnx
