@@ -34,7 +34,7 @@ ruvector-attention = { path = "../../experiments/ruvector/crates/ruvector-attent
 ruvector-hyperbolic-hnsw = { path = "../../experiments/ruvector/crates/ruvector-hyperbolic-hnsw", default-features = false }
 # 11.8-06: local LLM inference (Metal-accelerated on Apple Silicon). Path dep — no crates.io
 # supply-chain surface. Feature list per 11.8-01-AUDIT.md "Recommended Cargo features".
-ruvllm = { path = "../../experiments/ruvector/crates/ruvllm", default-features = false, features = ["inference-metal", "gguf-mmap", "parallel", "accelerate", "async-runtime"] }
+ruvllm = { path = "../../experiments/ruvector/crates/ruvllm", default-features = false, features = ["candle", "gguf-mmap", "async-runtime"] }
 fastembed = "5"
 notify-debouncer-mini = "0.4"
 pdf-extract = "0.10"
