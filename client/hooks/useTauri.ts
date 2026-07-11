@@ -168,8 +168,13 @@ export function useReclusterSpaces() {
   return useMutation({
     mutationFn: () => tauriInvoke<Space[]>("recluster_spaces", {}, () => mockSpaces),
     onSuccess: () => {
+      // Each Re-cluster runs a fresh clustering + labeling pass on the backend, so
+      // refetch everything that reflects space labels. spaceLabels was previously
+      // omitted, leaving the label-cache view (SpaceCard tooltips / rename UI)
+      // showing stale labels after a re-cluster changed them.
       queryClient.invalidateQueries({ queryKey: queryKeys.spaces });
       queryClient.invalidateQueries({ queryKey: queryKeys.spaceGraph });
+      queryClient.invalidateQueries({ queryKey: queryKeys.spaceLabels });
     },
   });
 }

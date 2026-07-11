@@ -432,13 +432,29 @@ pub fn resolve_collisions(proposed: &[(String, String)]) -> Vec<(String, Resolve
     result
 }
 
+/// Separator used between a base label and its entity-hint suffix (em-dash U+2014
+/// surrounded by spaces).
+pub const SUFFIX_SEPARATOR: &str = " \u{2014} ";
+
 /// Apply the suffix fallback when a collision cannot be resolved by LLM retry (D-13).
 ///
 /// Format: `"{base} — {suffix_entity_value}"` (em-dash U+2014 + space).
 /// Example: `apply_suffix_fallback("Work Docs", "Freelance")` → `"Work Docs — Freelance"`.
 /// Plan 04 calls this after 2 retry rounds fail.
+///
+/// Bug 3 (idempotency): re-cluster/re-label runs feed the *cached* label back in
+/// as `base`. If that cached label already carries a previously-applied suffix
+/// (e.g. `"Space 2 — METROVILLE"`), naively appending again yields
+/// `"Space 2 — METROVILLE — Alex Doe — Alex Doe"` that grows on every pass. To
+/// keep repeated calls idempotent we strip any existing ` — …` suffix chain and
+/// recompute the suffix from the ORIGINAL base label each time.
 pub fn apply_suffix_fallback(base: &str, suffix_entity_value: &str) -> String {
-    format!("{} \u{2014} {}", base, suffix_entity_value)
+    let root = base
+        .split(SUFFIX_SEPARATOR)
+        .next()
+        .unwrap_or(base)
+        .trim_end();
+    format!("{}{}{}", root, SUFFIX_SEPARATOR, suffix_entity_value)
 }
 
 // ─── Domain-expansion bootstrap (D-11 replacement) ────────────────────────────
@@ -753,6 +769,30 @@ mod tests {
     fn test_apply_suffix_fallback_uses_em_dash() {
         let result = apply_suffix_fallback("Property Tax Records", "AlphaComplex");
         assert!(result.contains('\u{2014}'), "Must use em-dash (U+2014)");
+    }
+
+    /// Bug 3: repeated re-cluster/re-label passes must NOT keep appending suffixes.
+    /// Calling apply_suffix_fallback twice in a row must not grow the label — the
+    /// suffix is always recomputed from the original base, never chained.
+    #[test]
+    fn test_apply_suffix_fallback_is_idempotent_across_repeated_calls() {
+        let once = apply_suffix_fallback("Space 2", "Alex Doe");
+        assert_eq!(once, "Space 2 \u{2014} Alex Doe");
+
+        // Re-applying the SAME suffix to the already-suffixed label must be a no-op.
+        let twice = apply_suffix_fallback(&once, "Alex Doe");
+        assert_eq!(twice, once, "re-applying the same suffix must not grow the label");
+
+        // Applying a DIFFERENT suffix must replace, not chain — base is recomputed.
+        let changed = apply_suffix_fallback(&once, "Metroville");
+        assert_eq!(changed, "Space 2 \u{2014} Metroville");
+        assert!(!changed.contains("Alex Doe"), "prior suffix must be replaced, not chained: {}", changed);
+
+        // Simulate the reported failure: an already double-suffixed label collapses
+        // back to a single suffix instead of continuing to grow.
+        let grown = "Space 2 \u{2014} METROVILLE \u{2014} Alex Doe";
+        let fixed = apply_suffix_fallback(grown, "Alex Doe");
+        assert_eq!(fixed, "Space 2 \u{2014} Alex Doe");
     }
 
     // ── Task 2: try_bootstrap_from_nearest tests ──────────────────────────────

@@ -1000,6 +1000,27 @@ impl Default for SpaceManager {
 /// - `clusters`: new clustering result
 /// - `cache`: current SpaceLabelCache (read-only)
 /// - `previous_spaces`: previous clustering result (for Jaccard + bootstrap)
+/// Detect a "placeholder" label that never received a real LLM/bootstrap name.
+///
+/// Bug 4: when the labeling LLM is unavailable or fails (e.g. Ollama CPU
+/// timeout), the recluster loop falls back to `naming.rs::name_space`, whose
+/// default is `"Space {N}"`, and caches it. On the next recluster the cache hit
+/// + low Jaccard would normally produce `Skip`, so the space stays stuck at
+/// `"Space 1"` forever no matter how many times the user clicks Re-cluster.
+/// Treating an empty label or a bare `"Space {N}"` fallback as "not really
+/// labeled" makes such a space ALWAYS eligible for a fresh labeling attempt.
+fn is_placeholder_label(label: &str) -> bool {
+    let t = label.trim();
+    if t.is_empty() {
+        return true;
+    }
+    // Rule-based default fallback from naming.rs: "Space {N}" (N = positive int).
+    if let Some(rest) = t.strip_prefix("Space ") {
+        return !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit());
+    }
+    false
+}
+
 pub fn plan_labeling_operations(
     clusters: &[Cluster],
     cache: &SpaceLabelCache,
@@ -1035,6 +1056,14 @@ pub fn plan_labeling_operations(
                 // D-15: user_locked spaces are NEVER re-labeled regardless of Jaccard.
                 LabelingDecision::Skip
             } else if let Some(cached) = cache.get(&cluster.id) {
+                // Bug 4: a cached placeholder ("Space N" fallback or empty label)
+                // means the previous labeling attempt never produced a real name.
+                // Always retry — do NOT let the Jaccard/fingerprint skip-gate treat
+                // it as "already labeled". This keeps unlabeled spaces eligible for
+                // a fresh labeling attempt on every Re-cluster.
+                if is_placeholder_label(&cached.label) {
+                    LabelingDecision::LlmLabel
+                } else {
                 // Cache hit: check Jaccard distance against previous docs.
                 let prev_doc_set: HashSet<String> = previous_spaces
                     .iter()
@@ -1060,6 +1089,7 @@ pub fn plan_labeling_operations(
                         LabelingDecision::LlmLabel
                     }
                 }
+                } // end placeholder-label else branch (Bug 4)
             } else {
                 // New cluster (no cache entry): try bootstrap from nearest previous space.
                 // D-11 replacement: pure-Rust cosine similarity >= 0.75 threshold.
@@ -1423,6 +1453,59 @@ mod tests {
             LabelingDecision::Skip,
             "Identical doc sets must produce Jaccard=0 → Skip"
         );
+    }
+
+    #[test]
+    fn test_plan_labeling_placeholder_label_always_relabels() {
+        // Bug 4: a cached placeholder "Space 1" fallback must ALWAYS get LlmLabel on
+        // recluster, even when Jaccard=0 (identical doc set) which would normally Skip.
+        let doc_ids = &["doc-1", "doc-2", "doc-3", "doc-4", "doc-5"];
+        let clusters = vec![make_cluster("space-0", doc_ids)];
+
+        let fp = membership_fingerprint(&doc_ids.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        let mut cache = SpaceLabelCache::default();
+        // Fingerprint matches AND Jaccard=0 — the only reason this isn't Skip is the
+        // placeholder label.
+        cache.insert("space-0".to_string(), make_cache_entry(&fp, "Space 1", false));
+
+        let prev = vec![make_space("space-0", doc_ids)];
+
+        let plan = plan_labeling_operations(&clusters, &cache, &prev);
+
+        assert_eq!(
+            plan.clusters[0].decision,
+            LabelingDecision::LlmLabel,
+            "A cached placeholder 'Space N' label must always be re-labeled, never Skipped"
+        );
+    }
+
+    #[test]
+    fn test_plan_labeling_empty_label_always_relabels() {
+        // Bug 4: an empty cached label (labeling never produced a name) must retry.
+        let doc_ids = &["doc-1", "doc-2", "doc-3"];
+        let clusters = vec![make_cluster("space-0", doc_ids)];
+        let fp = membership_fingerprint(&doc_ids.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        let mut cache = SpaceLabelCache::default();
+        cache.insert("space-0".to_string(), make_cache_entry(&fp, "", false));
+        let prev = vec![make_space("space-0", doc_ids)];
+
+        let plan = plan_labeling_operations(&clusters, &cache, &prev);
+        assert_eq!(
+            plan.clusters[0].decision,
+            LabelingDecision::LlmLabel,
+            "An empty cached label must always trigger a labeling attempt"
+        );
+    }
+
+    #[test]
+    fn test_is_placeholder_label() {
+        assert!(is_placeholder_label(""));
+        assert!(is_placeholder_label("   "));
+        assert!(is_placeholder_label("Space 1"));
+        assert!(is_placeholder_label("Space 12"));
+        assert!(!is_placeholder_label("Space Invaders"));
+        assert!(!is_placeholder_label("Work Docs"));
+        assert!(!is_placeholder_label("Property Tax Records"));
     }
 
     #[test]

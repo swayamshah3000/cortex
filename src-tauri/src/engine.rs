@@ -12,6 +12,29 @@ pub struct CortexEngine {
     pub filter_index: PayloadIndexManager,
 }
 
+/// Upper bound on vectors per HNSW collection.
+///
+/// `HnswConfig::default()` uses `max_elements: 1_000_000`, and hnsw_rs pre-
+/// allocates the point-indexation graph for that full capacity up front — ~332 MB
+/// per collection for the 1536-dim index, allocated the instant a collection is
+/// created (even when empty). Across the test suite that repeated per-engine
+/// pre-allocation drove the process to a fatal OOM on memory-constrained machines
+/// (STATUS_STACK_BUFFER_OVERRUN / failed 332 MB alloc during `new_with_path`).
+///
+/// Cortex is a personal-document desktop app: 200k vectors per collection is far
+/// beyond any realistic personal corpus while cutting the eager pre-allocation
+/// ~5×. Raise this if a larger corpus is ever a supported target.
+const HNSW_MAX_ELEMENTS: usize = 200_000;
+
+/// Build an `HnswConfig` matching the crate default except for a right-sized
+/// `max_elements` (see [`HNSW_MAX_ELEMENTS`]). Mutates the public field on a
+/// `default()` value so we inherit any other default fields unchanged.
+fn sized_hnsw_config() -> HnswConfig {
+    let mut cfg = HnswConfig::default();
+    cfg.max_elements = HNSW_MAX_ELEMENTS;
+    cfg
+}
+
 impl CortexEngine {
     /// Initialize CortexEngine with RuVector backed by the given data directory.
     ///
@@ -32,7 +55,7 @@ impl CortexEngine {
         collections.create_collection("documents_384", CollectionConfig {
             dimensions: 384,
             distance_metric: DistanceMetric::Cosine,
-            hnsw_config: Some(HnswConfig::default()),
+            hnsw_config: Some(sized_hnsw_config()),
             quantization: None,
             on_disk_payload: true,
         }).or_else(|e| {
@@ -48,7 +71,7 @@ impl CortexEngine {
         collections.create_collection("documents_1536", CollectionConfig {
             dimensions: 1536,
             distance_metric: DistanceMetric::Cosine,
-            hnsw_config: Some(HnswConfig::default()),
+            hnsw_config: Some(sized_hnsw_config()),
             quantization: None,
             on_disk_payload: true,
         }).or_else(|e| {

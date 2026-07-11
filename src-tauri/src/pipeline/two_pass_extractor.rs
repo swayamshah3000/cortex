@@ -228,9 +228,19 @@ impl TwoPassExtractor {
             if let Some(idx_str) = refined.pass1_id.strip_prefix("e_") {
                 match idx_str.parse::<usize>() {
                     Ok(idx) if idx < n => {
-                        pass1[idx].class      = Some(refined.class.clone());
-                        pass1[idx].subclass   = refined.subclass.clone();
-                        pass1[idx].confidence = Some(refined.confidence);
+                        // Bug 1: never let Pass 2 reclassify an email-shaped Pass 1
+                        // value away from Email (e.g. into Person). The regex already
+                        // classified it correctly; the LLM must not override that.
+                        if refined.class != "Email" && looks_like_email(&pass1[idx].value) {
+                            pass1[idx].class       = Some("Email".to_string());
+                            pass1[idx].entity_type = "email".to_string();
+                            pass1[idx].subclass    = None;
+                            pass1[idx].confidence  = Some(refined.confidence);
+                        } else {
+                            pass1[idx].class      = Some(refined.class.clone());
+                            pass1[idx].subclass   = refined.subclass.clone();
+                            pass1[idx].confidence = Some(refined.confidence);
+                        }
                     }
                     Ok(idx) => {
                         eprintln!(
@@ -259,13 +269,23 @@ impl TwoPassExtractor {
         // b. Append additional_entities.
         let mut merged = pass1;
         for additional in pass2.additional_entities {
-            let entity_type = entity_type_from_class(&additional.class);
+            // Bug 1: the LLM sometimes returns an email address as its own Person
+            // (or Organization) entity. An email-shaped value must always be the
+            // Email class — force it so (1) it is never surfaced as a duplicate
+            // Person, and (2) the (entity_type, value) dedup below collapses it
+            // against the Pass 1 Email entity carrying the same value.
+            let (class, entity_type) = if additional.class != "Email" && looks_like_email(&additional.value) {
+                ("Email".to_string(), "email".to_string())
+            } else {
+                let et = entity_type_from_class(&additional.class);
+                (additional.class.clone(), et)
+            };
             merged.push(ExtractedEntity {
                 label:        additional.value.clone(),
                 value:        additional.value,
                 entity_type,
                 canonical_id: None,
-                class:        Some(additional.class),
+                class:        Some(class),
                 subclass:     additional.subclass,
                 canonical_short_name: None,
                 confidence:   Some(additional.confidence),
@@ -287,6 +307,35 @@ impl TwoPassExtractor {
             entities_version:  TWO_PASS_TARGET_VERSION,
             language:          pass2.language,
         }
+    }
+}
+
+// ─── looks_like_email (Bug 1) ─────────────────────────────────────────────────
+
+/// Heuristic email-shape check. Returns true for `local@domain.tld` values with
+/// exactly one `@`, no internal whitespace, and a dotted domain whose TLD is
+/// alphabetic. Used to stop Pass 2 (the LLM) from misclassifying an email string
+/// as a Person/Organization entity, and to let the merge dedup collapse an
+/// email that the LLM re-emitted against the Pass 1 Email entity.
+fn looks_like_email(value: &str) -> bool {
+    let v = value.trim();
+    if v.is_empty() || v.matches('@').count() != 1 || v.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    let (local, domain) = match v.split_once('@') {
+        Some((l, d)) => (l, d),
+        None => return false,
+    };
+    if local.is_empty() || domain.is_empty() {
+        return false;
+    }
+    match domain.rsplit_once('.') {
+        Some((host, tld)) => {
+            !host.is_empty()
+                && tld.len() >= 2
+                && tld.chars().all(|c| c.is_ascii_alphabetic())
+        }
+        None => false,
     }
 }
 
@@ -482,6 +531,108 @@ mod tests {
         assert_eq!(result.tags, vec!["india".to_string()]);
         assert_eq!(result.language, Some("en".to_string()));
         assert!((result.entities_version - TWO_PASS_TARGET_VERSION).abs() < 1e-5);
+    }
+
+    // ── Bug 1: email must never be classified as Person ──────────────────────
+
+    /// The LLM (Pass 2) sometimes returns an email string as its own Person entity
+    /// alongside the real person's name. merge_passes must force the email-shaped
+    /// value to the Email class, never surface it as a Person, and collapse it
+    /// against the Pass 1 Email entity carrying the same value.
+    #[test]
+    fn test_merge_passes_email_not_classified_as_person() {
+        use crate::pipeline::pass2_llm_refiner::Pass2AdditionalEntity;
+
+        // Pass 1 already found the email as an Email entity.
+        let pass1 = vec![
+            make_entity("email", "alex.doe@example.com", Some("Email"), None, Some(1.0)),
+        ];
+
+        // Pass 2 wrongly returns the same email string as a Person, plus the real name.
+        let pass2 = Pass2Output {
+            refined_entities: vec![],
+            additional_entities: vec![
+                Pass2AdditionalEntity {
+                    class: "Person".to_string(),
+                    subclass: None,
+                    value: "alex.doe@example.com".to_string(),
+                    confidence: 0.9,
+                },
+                Pass2AdditionalEntity {
+                    class: "Person".to_string(),
+                    subclass: None,
+                    value: "Alex Doe".to_string(),
+                    confidence: 0.95,
+                },
+            ],
+            topic: None, tags: vec![], language: None,
+        };
+
+        let result = TwoPassExtractor::merge_passes(pass1, pass2);
+
+        // The email must NOT appear as a Person entity.
+        assert!(
+            !result.entities.iter().any(|e| e.value == "alex.doe@example.com" && e.entity_type == "person"),
+            "email must never be classified as Person: {:?}", result.entities
+        );
+
+        // Exactly one entity carries the email value — Pass 1 Email and the
+        // reclassified Pass 2 duplicate collapsed into one Email entity.
+        let email_ents: Vec<_> = result
+            .entities
+            .iter()
+            .filter(|e| e.value == "alex.doe@example.com")
+            .collect();
+        assert_eq!(email_ents.len(), 1, "duplicate email must collapse to one entity: {:?}", email_ents);
+        assert_eq!(email_ents[0].entity_type, "email");
+        assert_eq!(email_ents[0].class.as_deref(), Some("Email"));
+
+        // The real person name still survives as a Person.
+        assert!(
+            result.entities.iter().any(|e| e.value == "Alex Doe" && e.entity_type == "person"),
+            "the real person name must remain a Person entity"
+        );
+    }
+
+    /// A Pass 2 refinement must not be able to relabel an email-shaped Pass 1
+    /// value into a Person class.
+    #[test]
+    fn test_merge_passes_refine_cannot_turn_email_into_person() {
+        use crate::pipeline::pass2_llm_refiner::Pass2RefinedEntity;
+
+        let pass1 = vec![
+            make_entity("email", "sam.doe@example.com", Some("Email"), None, Some(1.0)),
+        ];
+        let pass2 = Pass2Output {
+            refined_entities: vec![Pass2RefinedEntity {
+                pass1_id: "e_0".to_string(),
+                class: "Person".to_string(),
+                subclass: None,
+                confidence: 0.8,
+            }],
+            additional_entities: vec![],
+            topic: None, tags: vec![], language: None,
+        };
+
+        let result = TwoPassExtractor::merge_passes(pass1, pass2);
+        let ent = result.entities.iter().find(|e| e.value == "sam.doe@example.com").unwrap();
+        assert_eq!(ent.class.as_deref(), Some("Email"), "refine must not reclassify email as Person");
+        assert_eq!(ent.entity_type, "email");
+    }
+
+    /// Guard `looks_like_email` against false positives — normal names must not
+    /// be treated as emails.
+    #[test]
+    fn test_looks_like_email_rejects_plain_names() {
+        assert!(looks_like_email("alex.doe@example.com"));
+        assert!(looks_like_email("a@b.co"));
+        assert!(!looks_like_email("Alex Doe"));
+        assert!(!looks_like_email("Alpha Beta Corp"));
+        assert!(!looks_like_email("@example.com"));
+        assert!(!looks_like_email("alex@"));
+        assert!(!looks_like_email("alex.doe@example"));       // no dotted TLD
+        assert!(!looks_like_email("alex @ example.com"));     // whitespace
+        assert!(!looks_like_email("a@b@example.com"));        // two @
     }
 
     // ── Test 5: merge_passes — out-of-bounds pass1_id is dropped ─────────────

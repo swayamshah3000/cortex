@@ -169,6 +169,15 @@ impl EntityStore {
         Ok(touched)
     }
 
+    /// Case-insensitive exact lookup of an existing canonical by (surface, type).
+    ///
+    /// Bug 2: both `surface` and `entity_type` are lowercased before lookup so
+    /// "SAM DOE"/"Sam Doe"/"sam doe" and "Person"/"person" all resolve to the same
+    /// canonical id. Returns `None` when no alias matches.
+    pub(crate) fn find_exact_canonical(&self, surface: &str, entity_type: &str) -> Option<String> {
+        self.alias_index.get(&alias_key(surface, entity_type)).cloned()
+    }
+
     /// Find an existing canonical for (surface, entity_type) or create a new one.
     ///
     /// Algorithm (per D-05):
@@ -181,11 +190,14 @@ impl EntityStore {
         entity_type: &str,
         embedder: &EmbeddingService,
     ) -> Result<String, AppError> {
-        let key = (surface.to_lowercase(), entity_type.to_string());
+        // Bug 2: build the alias key with BOTH surface and entity_type lowercased so
+        // casing variants ("SAM DOE" vs "Sam Doe") and entity-type casing ("Person"
+        // vs "person") resolve to the same canonical instead of spawning duplicates.
+        let key = alias_key(surface, entity_type);
 
-        // Step 1: Exact alias lookup
-        if let Some(cid) = self.alias_index.get(&key) {
-            return Ok(cid.clone());
+        // Step 1: Exact (case-insensitive) alias lookup.
+        if let Some(cid) = self.find_exact_canonical(surface, entity_type) {
+            return Ok(cid);
         }
 
         // Step 2a: Token-subset fast path — catches "Alex" ⊂ "Alex Doe" where cosine
@@ -479,12 +491,12 @@ impl EntityStore {
             canonical.aliases.retain(|a| a != alias_to_split);
         }
 
-        // Remove alias from alias_index
-        let alias_key = (alias_to_split.to_lowercase(), {
+        // Remove alias from alias_index (Bug 2: key via the shared case-insensitive helper).
+        let removal_key = {
             let canonical = &self.canonicals[canonical_id];
-            canonical.entity_type.clone()
-        });
-        self.alias_index.remove(&alias_key);
+            alias_key(alias_to_split, &canonical.entity_type)
+        };
+        self.alias_index.remove(&removal_key);
 
         // Find docs that contained this alias
         let affected_doc_ids: Vec<String> = self
@@ -508,7 +520,7 @@ impl EntityStore {
         };
         self.canonicals.insert(new_id.clone(), new_canonical);
         self.alias_index
-            .insert((alias_to_split.to_lowercase(), entity_type), new_id.clone());
+            .insert(alias_key(alias_to_split, &entity_type), new_id.clone());
         self.canonical_embeddings.insert(new_id.clone(), new_embedding);
         self.doc_index.insert(new_id.clone(), HashSet::new());
 
@@ -724,6 +736,15 @@ impl Default for EntityStore {
     }
 }
 
+/// Build the canonical `alias_index` key for a (surface, entity_type) pair.
+///
+/// Bug 2: lowercasing BOTH components is what makes canonical matching
+/// case-insensitive. Every insert into and lookup against `alias_index` must go
+/// through this helper so the key space stays consistent.
+fn alias_key(surface: &str, entity_type: &str) -> (String, String) {
+    (surface.to_lowercase(), entity_type.to_lowercase())
+}
+
 /// Compute cosine similarity between two vectors.
 /// Returns 0.0 if either vector is zero-length (avoids NaN).
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
@@ -773,12 +794,45 @@ mod tests {
             canonical_short_name: None,
         };
         store.canonicals.insert(id.to_string(), canonical);
-        store.alias_index.insert(
-            (name.to_lowercase(), entity_type.to_string()),
-            id.to_string(),
-        );
+        store
+            .alias_index
+            .insert(alias_key(name, entity_type), id.to_string());
         store.canonical_embeddings.insert(id.to_string(), embedding);
         store.doc_index.insert(id.to_string(), HashSet::new());
+    }
+
+    /// Bug 2: casing variants of the same surface + type must resolve to the SAME
+    /// canonical entity. "SAM DOE" and "sam doe" must both find the canonical seeded
+    /// under "Sam Doe", and entity-type casing ("Person" vs "person") must not split
+    /// them either.
+    #[test]
+    fn test_find_exact_canonical_is_case_insensitive() {
+        let mut store = EntityStore::new();
+        seed_canonical(&mut store, "cid-1", "Sam Doe", "person", vec![1.0, 0.0]);
+
+        let base = store.find_exact_canonical("Sam Doe", "person");
+        assert_eq!(base.as_deref(), Some("cid-1"));
+
+        // All-caps surface must resolve to the same canonical.
+        assert_eq!(
+            store.find_exact_canonical("SAM DOE", "person").as_deref(),
+            Some("cid-1"),
+            "'SAM DOE' must resolve to the same canonical as 'Sam Doe'"
+        );
+        // Lowercase surface too.
+        assert_eq!(
+            store.find_exact_canonical("sam doe", "person").as_deref(),
+            Some("cid-1")
+        );
+        // Entity-type casing must not split the match either.
+        assert_eq!(
+            store.find_exact_canonical("SAM DOE", "Person").as_deref(),
+            Some("cid-1"),
+            "entity-type casing ('Person' vs 'person') must not split the canonical"
+        );
+
+        // A genuinely different name must NOT match.
+        assert_eq!(store.find_exact_canonical("Sam Okafor", "person"), None);
     }
 
     /// Test 1: EntityStore::new() constructs empty.
